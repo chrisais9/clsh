@@ -67,7 +67,7 @@ def connect_SSH(hosts, command, interactive, out, err):
 
 
 def get_args():
-    parser = argparse.ArgumentParser(add_help=False, exit_on_error=False)
+    parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--hostfile")
     parser.add_argument("-h")
     parser.add_argument("-i", action='store_true')
