@@ -3,11 +3,10 @@ import argparse
 import subprocess
 import signal
 from sys import exit
-import queue
 
 # Available SSH server (hosted in AWS EC2)
 # 13.124.15.148
-# 3.38.95.225
+# 3.38.165.191
 # 43.201.19.126
 
 p_pool = []
@@ -38,17 +37,18 @@ def connect_SSH(hosts, command, interactive, out, err, user):
                 else:
                     print("LOCAL:")
                 p.wait()
+                p.terminate()
                 p_pool.remove(p)
             else:
                 for host in hosts:
+                    p = subprocess.Popen(f'ssh -i ssh-key.pem {user+"@" if user else "ubuntu@"}{host} -T -o "StrictHostKeyChecking=no"',
+                                         stdin=subprocess.PIPE,
+                                         stdout=subprocess.PIPE,
+                                         stderr=subprocess.PIPE,
+                                         shell=True,
+                                         universal_newlines=True,
+                                         preexec_fn=os.setsid)
                     try:
-                        p = subprocess.Popen(f'ssh -i ssh-key.pem {user+"@" if user else ""}{host} -T -o "StrictHostKeyChecking=no"',
-                                             stdin=subprocess.PIPE,
-                                             stdout=subprocess.PIPE,
-                                             stderr=subprocess.PIPE,
-                                             shell=True,
-                                             universal_newlines=True,
-                                             preexec_fn=os.setsid)
                         p_pool.append(p)
                         out, err = p.communicate(inp, timeout=5)
                         if len(out):
@@ -58,45 +58,49 @@ def connect_SSH(hosts, command, interactive, out, err, user):
                         else:
                             print(f"{host}:")
                         p.wait()
+                        p.terminate()
                         p_pool.remove(p)
                     except subprocess.TimeoutExpired:
+                        os.killpg(os.getpgid(p.pid), signal.SIGTERM)
                         print(f"ERROR: {host} connection lost")
                         exit(0)
 
             print("------------------------")
     else:
         for host in hosts:
-            try:
-                p = subprocess.Popen(f'ssh -i ssh-key.pem {user+"@" if user else ""}{host} -T -o "StrictHostKeyChecking=no"',
+                p = subprocess.Popen(f'ssh -i ssh-key.pem {user+"@" if user else "ubuntu@"}{host} -T -o "StrictHostKeyChecking=no"',
                                      stdin=subprocess.PIPE,
                                      stdout=subprocess.PIPE,
                                      stderr=subprocess.PIPE,
                                      shell=True,
                                      universal_newlines=True,
                                      preexec_fn=os.setsid)
-                stdout, stderr = p.communicate(command, timeout=5)
-                if len(stdout):
-                    if out:
-                        with open(out, "a+") as file:
-                            file.write(f"{host}: {stdout}")
+                try:
+                    stdout, stderr = p.communicate(command, timeout=5)
+                    if len(stdout):
+                        if out:
+                            with open(out, "a+") as file:
+                                file.write(f"{host}: {stdout}")
+                        else:
+                            print(f"{host}:", stdout, end="")
+                    elif len(stderr):
+                        if err:
+                            with open(err, "a+") as file:
+                                file.write(f"{host}: {stderr}")
+                        else:
+                            print(f"{host}:", stderr, end="")
                     else:
-                        print(f"{host}:", stdout, end="")
-                elif len(stderr):
-                    if err:
-                        with open(err, "a+") as file:
-                            file.write(f"{host}: {stderr}")
-                    else:
-                        print(f"{host}:", stderr, end="")
-                else:
-                    if out:
-                        with open(out, "a+") as file:
-                            file.write(f"{host}:\n")
-                    else:
-                        print(f"{host}:")
-                p.wait()
-            except subprocess.TimeoutExpired:
-                print(f"ERROR: {host} connection lost")
-                exit(0)
+                        if out:
+                            with open(out, "a+") as file:
+                                file.write(f"{host}:\n")
+                        else:
+                            print(f"{host}:")
+                    p.wait()
+                    p.terminate()
+                except subprocess.TimeoutExpired:
+                    os.killpg(os.getpgid(p.pid), signal.SIGTERM)
+                    print(f"ERROR: {host} connection lost")
+                    exit(0)
 
 
 def get_args():
